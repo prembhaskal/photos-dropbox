@@ -10,6 +10,9 @@
         var YOUR_CLIENT_ID = '1082052306771-j62ln8bgirj4qgn9a43bc9jdp7bhvugd.apps.googleusercontent.com';
         var YOUR_REDIRECT_URI = 'http://localhost:19080';
         var fragmentString = location.hash.substring(1);
+
+        var picNextPageToken = "";
+
         console.log("location: " + location);
         console.log("location hash: " + location.hash);
 
@@ -51,17 +54,18 @@
         }
 
         function getPhotosList() {
+            let nextPageToken = picNextPageToken;
             var params = JSON.parse(localStorage.getItem('oauth2-test-params'));
             if (params && params['access_token']) {
                 var xhr = new XMLHttpRequest();
                 xhr.open('GET',
-                    'https://photoslibrary.googleapis.com/v1/mediaItems?pageSize=10');
+                    'https://photoslibrary.googleapis.com/v1/mediaItems?pageSize=10&pageToken=' + nextPageToken);
                 xhr.setRequestHeader('Authorization', 'Bearer ' + params['access_token']);
                 xhr.onreadystatechange = function (e) {
                     if (xhr.readyState === 4 && xhr.status === 200) {
                         console.log("got pics list");
                         console.log(xhr.response);
-                        refreshImageTable(JSON.parse(xhr.responseText));
+                        updateTableWithImages(JSON.parse(xhr.responseText));
                     } else if (xhr.readyState === 4 && xhr.status === 401) {
                         oauth2SignIn();
                     } else if (xhr.readyState === 4) {
@@ -76,34 +80,47 @@
             }
         }
 
-        function refreshImageTable(imagesData) {
-            let tableRef = document.getElementById('pics-table');
-
+        function updateTableWithImages(imagesData) {
             let mediaItems = imagesData['mediaItems'];
             if (!mediaItems) {
                 console.log("no media items");
                 return;
             }
 
-            for (let i = 0; i < 5; i++) {
+            if (imagesData['nextPageToken']) {
+                picNextPageToken = imagesData['nextPageToken'];
+            }
+            console.log("found next page token is " + picNextPageToken);
+            clearTableRows();
+            let tableRef = document.getElementById('pics-table');
+
+            console.log("adding " + mediaItems.length + " rows to table");
+            for (let i = 0; i < mediaItems.length; i++) {
                 let row = tableRef.insertRow(-1);
                 row.id = 'row_' + i;
 
                 let imageData = mediaItems[i];
 
-                let idCell = row.insertCell(0);
-                let imageId = imageData['id'];
-                let idText = document.createTextNode("id - " + imageId);
-                idCell.appendChild(idText);
+                let serNumCell = row.insertCell();
+                let serialNumNd = document.createTextNode(''+(i+1));
+                serNumCell.appendChild(serialNumNd);
 
-                let imgNameCell = row.insertCell(1);
+                let idCell = row.insertCell();
+                let imageId = imageData['id'];
+                let divElem = document.createElement('div');
+                let idText = document.createTextNode("id - " + imageId);
+                divElem.appendChild(idText);
+                idCell.appendChild(divElem);
+
+                let imgNameCell = row.insertCell();
                 let imageName = imageData['filename'];
                 let imgNameNd = document.createTextNode("image: " + imageName);
                 imgNameCell.appendChild(imgNameNd);
 
                 let imgBaseUrl = imageData['baseUrl'];
                 let imgBigUrl = imgBaseUrl + '=w0-h0';
-                let imgCell = row.insertCell(2);
+
+                let imgCell = row.insertCell();
                 let hyperNd = document.createElement('a')
                 hyperNd.setAttribute('target', '_blank');
                 hyperNd.setAttribute('href', imgBigUrl);
@@ -112,6 +129,15 @@
                 imgNd.setAttribute('alt', imageName);
                 hyperNd.appendChild(imgNd);
                 imgCell.appendChild(hyperNd);
+            }
+        }
+
+        function clearTableRows() {
+            let tableRef = document.getElementById('pics-table');
+            let n = tableRef.rows.length;
+            console.log("table rows length " + n);
+            for (let i = n - 1; i >= 0; i--) { // don't remove header row.
+                tableRef.deleteRow(i);
             }
         }
 
@@ -156,11 +182,13 @@
 
     <div>
         <button onclick="getPhotosList();">Try sample request</button>
+        <button>Next Data</button>
     </div>
 
     <div>
         <table id="pics-table">
             <tr>
+                <th>Serial No.</th>
                 <th>Image Id</th>
                 <th>Image Name</th>
                 <th>Image</th>
