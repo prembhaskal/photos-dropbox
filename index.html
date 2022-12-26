@@ -1,81 +1,172 @@
-<html><head></head><body>
+<!DOCTYPE html>
+<html>
+
+<head>
+    <link rel="stylesheet" type="text/css" href="css/index.css" />
+</head>
+
+<body>
     <script>
-      var YOUR_CLIENT_ID = '1082052306771-j62ln8bgirj4qgn9a43bc9jdp7bhvugd.apps.googleusercontent.com';
-      var YOUR_REDIRECT_URI = 'http://localhost:19080';
-      var fragmentString = location.hash.substring(1);
-      console.log("location: " + location);
-      console.log("location hash: " + location.hash);
-    
-      // Parse query string to see if page request is coming from OAuth 2.0 server.
-      var params = {};
-      var regex = /([^&=]+)=([^&]*)/g, m;
-      while (m = regex.exec(fragmentString)) {
-        params[decodeURIComponent(m[1])] = decodeURIComponent(m[2]);
-      }
-      if (Object.keys(params).length > 0) {
-        localStorage.setItem('oauth2-test-params', JSON.stringify(params) );
-        if (params['state'] && params['state'] == 'try_sample_request') {
-          trySampleRequest();
+        var YOUR_CLIENT_ID = '1082052306771-j62ln8bgirj4qgn9a43bc9jdp7bhvugd.apps.googleusercontent.com';
+        var YOUR_REDIRECT_URI = 'http://localhost:19080';
+        var fragmentString = location.hash.substring(1);
+        console.log("location: " + location);
+        console.log("location hash: " + location.hash);
+
+        // Parse query string to see if page request is coming from OAuth 2.0 server.
+        var params = {};
+        var regex = /([^&=]+)=([^&]*)/g, m;
+        while (m = regex.exec(fragmentString)) {
+            params[decodeURIComponent(m[1])] = decodeURIComponent(m[2]);
         }
-      }
-    
-      // If there's an access token, try an API request.
-      // Otherwise, start OAuth 2.0 flow.
-      function trySampleRequest() {
-        var params = JSON.parse(localStorage.getItem('oauth2-test-params'));
-        if (params && params['access_token']) {
-          var xhr = new XMLHttpRequest();
-          xhr.open('GET',
-              'https://www.googleapis.com/drive/v3/about?fields=user&' +
-              'access_token=' + params['access_token']);
-          xhr.onreadystatechange = function (e) {
-            if (xhr.readyState === 4 && xhr.status === 200) {
-              console.log(xhr.response);
-            } else if (xhr.readyState === 4 && xhr.status === 401) {
-              // Token invalid, so prompt for user permission.
-              oauth2SignIn();
+        if (Object.keys(params).length > 0) {
+            localStorage.setItem('oauth2-test-params', JSON.stringify(params));
+            if (params['state'] && params['state'] == 'try_sample_request') {
+                //   trySampleRequest();
+                getPhotosList();
             }
-          };
-          xhr.send(null);
-        } else {
-          oauth2SignIn();
         }
-      }
-    
-      /*
-       * Create form to request access token from Google's OAuth 2.0 server.
-       */
-      function oauth2SignIn() {
-        // Google's OAuth 2.0 endpoint for requesting an access token
-        var oauth2Endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
-    
-        // Create element to open OAuth 2.0 endpoint in new window.
-        var form = document.createElement('form');
-        form.setAttribute('method', 'GET'); // Send as a GET request.
-        form.setAttribute('action', oauth2Endpoint);
-    
-        // Parameters to pass to OAuth 2.0 endpoint.
-        var params = {'client_id': YOUR_CLIENT_ID,
-                      'redirect_uri': YOUR_REDIRECT_URI,
-                      'scope': 'https://www.googleapis.com/auth/drive.metadata.readonly',
-                      'state': 'try_sample_request',
-                      'include_granted_scopes': 'true',
-                      'response_type': 'token'};
-    
-        // Add form parameters as hidden input values.
-        for (var p in params) {
-          var input = document.createElement('input');
-          input.setAttribute('type', 'hidden');
-          input.setAttribute('name', p);
-          input.setAttribute('value', params[p]);
-          form.appendChild(input);
+
+        // If there's an access token, try an API request.
+        // Otherwise, start OAuth 2.0 flow.
+        function trySampleRequest() {
+            var params = JSON.parse(localStorage.getItem('oauth2-test-params'));
+            if (params && params['access_token']) {
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET',
+                    'https://www.googleapis.com/drive/v3/about?fields=user&' +
+                    'access_token=' + params['access_token']);
+                xhr.onreadystatechange = function (e) {
+                    if (xhr.readyState === 4 && xhr.status === 200) {
+                        console.log(xhr.response);
+                    } else if (xhr.readyState === 4 && xhr.status === 401) {
+                        // Token invalid, so prompt for user permission.
+                        oauth2SignIn();
+                    }
+                };
+                xhr.send(null);
+            } else {
+                oauth2SignIn();
+            }
         }
-    
-        // Add form to page and submit it to open the OAuth 2.0 endpoint.
-        document.body.appendChild(form);
-        form.submit();
-      }
+
+        function getPhotosList() {
+            var params = JSON.parse(localStorage.getItem('oauth2-test-params'));
+            if (params && params['access_token']) {
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET',
+                    'https://photoslibrary.googleapis.com/v1/mediaItems?pageSize=10');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + params['access_token']);
+                xhr.onreadystatechange = function (e) {
+                    if (xhr.readyState === 4 && xhr.status === 200) {
+                        console.log("got pics list");
+                        console.log(xhr.response);
+                        refreshImageTable(JSON.parse(xhr.responseText));
+                    } else if (xhr.readyState === 4 && xhr.status === 401) {
+                        oauth2SignIn();
+                    } else if (xhr.readyState === 4) {
+                        console.log("some issue, xhr.status: " + xhr.status);
+                    } else {
+                        console.log("some different issue, xhr.readyState: " + xhr.readyState + " status: " + xhr.status);
+                    }
+                };
+                xhr.send(null);
+            } else {
+                oauth2SignIn();
+            }
+        }
+
+        function refreshImageTable(imagesData) {
+            let tableRef = document.getElementById('pics-table');
+
+            let mediaItems = imagesData['mediaItems'];
+            if (!mediaItems) {
+                console.log("no media items");
+                return;
+            }
+
+            for (let i = 0; i < 5; i++) {
+                let row = tableRef.insertRow(-1);
+                row.id = 'row_' + i;
+
+                let imageData = mediaItems[i];
+
+                let idCell = row.insertCell(0);
+                let imageId = imageData['id'];
+                let idText = document.createTextNode("id - " + imageId);
+                idCell.appendChild(idText);
+
+                let imgNameCell = row.insertCell(1);
+                let imageName = imageData['filename'];
+                let imgNameNd = document.createTextNode("image: " + imageName);
+                imgNameCell.appendChild(imgNameNd);
+
+                let imgBaseUrl = imageData['baseUrl'];
+                let imgBigUrl = imgBaseUrl + '=w0-h0';
+                let imgCell = row.insertCell(2);
+                let hyperNd = document.createElement('a')
+                hyperNd.setAttribute('target', '_blank');
+                hyperNd.setAttribute('href', imgBigUrl);
+                let imgNd = document.createElement('img');
+                imgNd.setAttribute('src', imgBaseUrl);
+                imgNd.setAttribute('alt', imageName);
+                hyperNd.appendChild(imgNd);
+                imgCell.appendChild(hyperNd);
+            }
+        }
+
+        /*
+         * Create form to request access token from Google's OAuth 2.0 server.
+         */
+        function oauth2SignIn() {
+            // Google's OAuth 2.0 endpoint for requesting an access token
+            var oauth2Endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
+
+            // Create element to open OAuth 2.0 endpoint in new window.
+            var form = document.createElement('form');
+            form.setAttribute('method', 'GET'); // Send as a GET request.
+            form.setAttribute('action', oauth2Endpoint);
+
+            // Parameters to pass to OAuth 2.0 endpoint.
+            var params = {
+                'client_id': YOUR_CLIENT_ID,
+                'redirect_uri': YOUR_REDIRECT_URI,
+                'scope': 'https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/photoslibrary.readonly',
+                'state': 'try_sample_request',
+                'include_granted_scopes': 'true',
+                'response_type': 'token'
+            };
+
+            // Add form parameters as hidden input values.
+            for (var p in params) {
+                var input = document.createElement('input');
+                input.setAttribute('type', 'hidden');
+                input.setAttribute('name', p);
+                input.setAttribute('value', params[p]);
+                form.appendChild(input);
+            }
+
+            // Add form to page and submit it to open the OAuth 2.0 endpoint.
+            document.body.appendChild(form);
+            form.submit();
+        }
     </script>
-    
-    <button onclick="trySampleRequest();">Try sample request</button>
-    </body></html>
+
+    <h1>Photos to Dropbox</h1>
+
+    <div>
+        <button onclick="getPhotosList();">Try sample request</button>
+    </div>
+
+    <div>
+        <table id="pics-table">
+            <tr>
+                <th>Image Id</th>
+                <th>Image Name</th>
+                <th>Image</th>
+            </tr>
+        </table>
+    </div>
+</body>
+
+</html>
