@@ -8,37 +8,53 @@
 <body>
     <script>
         var YOUR_CLIENT_ID = '1082052306771-j62ln8bgirj4qgn9a43bc9jdp7bhvugd.apps.googleusercontent.com';
-        var YOUR_REDIRECT_URI = 'http://localhost:19080';
+        var APP_KEY = 'wbz5atfzopa5iv3';
+        var APP_SECRET = 'ekgwdpgb3wyy83q';
+        var APP_REDIRECT_URI = 'http://localhost:19080/dropbox.html';
         var fragmentString = location.hash.substring(1);
+        var drpAccessTokenKey = 'drp-oauth2-test-params';
 
         var picNextPageToken = "";
 
         console.log("location: " + location);
         console.log("location hash: " + location.hash);
 
-        // Parse query string to see if page request is coming from OAuth 2.0 server.
-        var params = {};
-        var regex = /([^&=]+)=([^&]*)/g, m;
-        while (m = regex.exec(fragmentString)) {
-            params[decodeURIComponent(m[1])] = decodeURIComponent(m[2]);
-        }
-        if (Object.keys(params).length > 0) {
-            localStorage.setItem('oauth2-test-params', JSON.stringify(params));
-            if (params['state'] && params['state'] == 'try_sample_request') {
-                //   trySampleRequest();
-                getPhotosList();
+        if (isAuthenticated()) {
+            trySampleRequest()
+        } else {
+            let accessCode = getCodeFromUrl();
+            console.log('access code is ' + accessCode);
+            if (!accessCode || accessCode === '') {
+                oauth2SignIn();
+            } else {
+                fetchAccessToken(accessCode);
             }
         }
+
+        // Parse query string to see if page request is coming from OAuth 2.0 server.
+        // var params = {};
+        // var regex = /([^&=]+)=([^&]*)/g, m;
+        // while (m = regex.exec(fragmentString)) {
+        //     params[decodeURIComponent(m[1])] = decodeURIComponent(m[2]);
+        // }
+        // if (Object.keys(params).length > 0) {
+        //     localStorage.setItem(drpAccessTokenKey, JSON.stringify(params));
+        //     if (params['state'] && params['state'] == 'try_sample_request') {
+        //         trySampleRequest();
+        //         // getPhotosList();
+        //     }
+        // }
 
         // If there's an access token, try an API request.
         // Otherwise, start OAuth 2.0 flow.
         function trySampleRequest() {
-            var params = JSON.parse(localStorage.getItem('oauth2-test-params'));
+            var params = JSON.parse(localStorage.getItem(drpAccessTokenKey));
             if (params && params['access_token']) {
                 var xhr = new XMLHttpRequest();
-                xhr.open('GET',
-                    'https://www.googleapis.com/drive/v3/about?fields=user&' +
-                    'access_token=' + params['access_token']);
+                xhr.open('POST',
+                    'https://api.dropboxapi.com/2/files/list_folder');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + params['access_token']);
+                xhr.setRequestHeader('Content-Type', 'application/json');
                 xhr.onreadystatechange = function (e) {
                     if (xhr.readyState === 4 && xhr.status === 200) {
                         console.log(xhr.response);
@@ -47,7 +63,7 @@
                         oauth2SignIn();
                     }
                 };
-                xhr.send(null);
+                xhr.send('{"path":"","recursive":false}');
             } else {
                 oauth2SignIn();
             }
@@ -55,7 +71,7 @@
 
         function getPhotosList() {
             let nextPageToken = picNextPageToken;
-            var params = JSON.parse(localStorage.getItem('oauth2-test-params'));
+            var params = JSON.parse(localStorage.getItem(drpAccessTokenKey));
             if (params && params['access_token']) {
                 var xhr = new XMLHttpRequest();
                 xhr.open('GET',
@@ -65,7 +81,7 @@
                     if (xhr.readyState === 4 && xhr.status === 200) {
                         console.log("got pics list");
                         console.log(xhr.response);
-                        updateTableWithImages(JSON.parse(xhr.responseText));
+                        // updateTableWithImages(JSON.parse(xhr.responseText));
                     } else if (xhr.readyState === 4 && xhr.status === 401) {
                         oauth2SignIn();
                     } else if (xhr.readyState === 4) {
@@ -102,7 +118,7 @@
                 let imageData = mediaItems[i];
 
                 let serNumCell = row.insertCell();
-                let serialNumNd = document.createTextNode(''+(i+1));
+                let serialNumNd = document.createTextNode('' + (i + 1));
                 serNumCell.appendChild(serialNumNd);
 
                 // let idCell = row.insertCell();
@@ -147,35 +163,91 @@
          */
         function oauth2SignIn() {
             // Google's OAuth 2.0 endpoint for requesting an access token
-            var oauth2Endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
+            let oauth2Endpoint = 'https://www.dropbox.com/oauth2/authorize?client_id=' +
+                APP_KEY +
+                '&redirect_uri=' +
+                APP_REDIRECT_URI +
+                '&response_type=code';
 
-            // Create element to open OAuth 2.0 endpoint in new window.
-            var form = document.createElement('form');
-            form.setAttribute('method', 'GET'); // Send as a GET request.
-            form.setAttribute('action', oauth2Endpoint);
+            window.open(oauth2Endpoint, '_self');
+        }
 
-            // Parameters to pass to OAuth 2.0 endpoint.
-            var params = {
-                'client_id': YOUR_CLIENT_ID,
-                'redirect_uri': YOUR_REDIRECT_URI,
-                'scope': 'https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/photoslibrary.readonly',
-                'state': 'try_sample_request',
-                'include_granted_scopes': 'true',
-                'response_type': 'token'
-            };
+        function fetchAccessToken(accessCode) {
+            var xhr = new XMLHttpRequest();
+                xhr.open('POST',
+                    'https://api.dropboxapi.com/oauth2/token');
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.onreadystatechange = function (e) {
+                    if (xhr.readyState === 4 && xhr.status === 200) {
+                        console.log('got access token');
+                        console.log(xhr.response);
+                    } else if (xhr.readyState === 4 && xhr.status === 401) {
+                        // Token invalid, so prompt for user permission.
+                        oauth2SignIn();
+                    }
+                };
+                tokenData = {
+                    "code": accessCode,
+                    "grant_type": "authorization_code",
+                    "redirect_uri": APP_REDIRECT_URI,
+                    "client_id": APP_KEY,
+                    "client_secret": APP_SECRET
+                }
+                // https://www.dropbox.com/developers/documentation/http/documentation#oauth2-token
+                // https://stackoverflow.com/a/53189376/1866530  using URLSearchParams makes forming body simple.
+                xhr.send(new URLSearchParams(tokenData));
+        }
 
-            // Add form parameters as hidden input values.
-            for (var p in params) {
-                var input = document.createElement('input');
-                input.setAttribute('type', 'hidden');
-                input.setAttribute('name', p);
-                input.setAttribute('value', params[p]);
-                form.appendChild(input);
+        function getAccessTokenFromUrl() {
+            return parseQueryString(window.location.hash).access_token;
+        }
+
+        // If the user was just redirected from authenticating, the urls hash will
+        // contain the access token.
+        function isAuthenticated() {
+            return !!getAccessTokenFromUrl();
+        }
+
+        function getCodeFromUrl() {
+            return parseQueryString(window.location.search).code;
+        }
+
+        function parseQueryString(str) {
+            const ret = Object.create(null);
+
+            if (typeof str !== 'string') {
+                return ret;
             }
 
-            // Add form to page and submit it to open the OAuth 2.0 endpoint.
-            document.body.appendChild(form);
-            form.submit();
+            str = str.trim().replace(/^(\?|#|&)/, '');
+
+            if (!str) {
+                return ret;
+            }
+
+            str.split('&').forEach((param) => {
+                const parts = param.replace(/\+/g, ' ').split('=');
+                // Firefox (pre 40) decodes `%3D` to `=`
+                // https://github.com/sindresorhus/query-string/pull/37
+                let key = parts.shift();
+                let val = parts.length > 0 ? parts.join('=') : undefined;
+
+                key = decodeURIComponent(key);
+
+                // missing `=` should be `null`:
+                // http://w3.org/TR/2012/WD-url-20120524/#collect-url-parameters
+                val = val === undefined ? null : decodeURIComponent(val);
+
+                if (ret[key] === undefined) {
+                    ret[key] = val;
+                } else if (Array.isArray(ret[key])) {
+                    ret[key].push(val);
+                } else {
+                    ret[key] = [ret[key], val];
+                }
+            });
+
+            return ret;
         }
     </script>
 
@@ -187,7 +259,7 @@
     </div>
 
     <div>
-        <table class="pics_table" id="pics-table">
+        <table class="drp_pics_table" id="drp_pics-table">
             <tr>
                 <th>Serial No.</th>
                 <th>Image Id</th>
