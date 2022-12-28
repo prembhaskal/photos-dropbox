@@ -12,7 +12,7 @@
         var APP_SECRET = 'ekgwdpgb3wyy83q';
         var APP_REDIRECT_URI = 'http://localhost:19080/dropbox.html';
         var fragmentString = location.hash.substring(1);
-        var drpAccessTokenKey = 'drp-oauth2-test-params';
+        const drpAccessTokenKey = 'drp-oauth2-test-params';
 
         var picNextPageToken = "";
 
@@ -20,7 +20,7 @@
         console.log("location hash: " + location.hash);
 
         if (isAuthenticated()) {
-            trySampleRequest()
+            listDropboxFolders()
         } else {
             let accessCode = getCodeFromUrl();
             console.log('access code is ' + accessCode);
@@ -47,7 +47,7 @@
 
         // If there's an access token, try an API request.
         // Otherwise, start OAuth 2.0 flow.
-        function trySampleRequest() {
+        function listDropboxFolders() {
             var params = JSON.parse(localStorage.getItem(drpAccessTokenKey));
             if (params && params['access_token']) {
                 var xhr = new XMLHttpRequest();
@@ -174,28 +174,30 @@
 
         function fetchAccessToken(accessCode) {
             var xhr = new XMLHttpRequest();
-                xhr.open('POST',
-                    'https://api.dropboxapi.com/oauth2/token');
-                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                xhr.onreadystatechange = function (e) {
-                    if (xhr.readyState === 4 && xhr.status === 200) {
-                        console.log('got access token');
-                        console.log(xhr.response);
-                    } else if (xhr.readyState === 4 && xhr.status === 401) {
-                        // Token invalid, so prompt for user permission.
-                        oauth2SignIn();
-                    }
-                };
-                tokenData = {
-                    "code": accessCode,
-                    "grant_type": "authorization_code",
-                    "redirect_uri": APP_REDIRECT_URI,
-                    "client_id": APP_KEY,
-                    "client_secret": APP_SECRET
+            xhr.open('POST',
+                'https://api.dropboxapi.com/oauth2/token');
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.onreadystatechange = function (e) {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    console.log('got access token');
+                    console.log(xhr.response);
+                    localStorage.setItem(drpAccessTokenKey, xhr.responseText);
+                    listDropboxFolders();
+                } else if (xhr.readyState === 4 && xhr.status === 401) {
+                    // Token invalid, so prompt for user permission.
+                    oauth2SignIn();
                 }
-                // https://www.dropbox.com/developers/documentation/http/documentation#oauth2-token
-                // https://stackoverflow.com/a/53189376/1866530  using URLSearchParams makes forming body simple.
-                xhr.send(new URLSearchParams(tokenData));
+            };
+            tokenData = {
+                "code": accessCode,
+                "grant_type": "authorization_code",
+                "redirect_uri": APP_REDIRECT_URI,
+                "client_id": APP_KEY,
+                "client_secret": APP_SECRET
+            }
+            // https://www.dropbox.com/developers/documentation/http/documentation#oauth2-token
+            // https://stackoverflow.com/a/53189376/1866530  using URLSearchParams makes forming body simple.
+            xhr.send(new URLSearchParams(tokenData));
         }
 
         function getAccessTokenFromUrl() {
