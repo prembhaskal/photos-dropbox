@@ -12,6 +12,7 @@
         var APP_SECRET = 'ekgwdpgb3wyy83q';
         var APP_REDIRECT_URI = 'http://localhost:19080/dropbox.html';
         var fragmentString = location.hash.substring(1);
+        const drpAuthCodeKey = 'drp-oauth2-auth-code';
         const drpAccessTokenKey = 'drp-oauth2-test-params';
 
         var picNextPageToken = "";
@@ -19,31 +20,28 @@
         console.log("location: " + location);
         console.log("location hash: " + location.hash);
 
-        if (isAuthenticated()) {
-            listDropboxFolders()
-        } else {
-            let accessCode = getCodeFromUrl();
-            console.log('access code is ' + accessCode);
-            if (!accessCode || accessCode === '') {
-                oauth2SignIn();
-            } else {
-                fetchAccessToken(accessCode);
-            }
+        if (!isAuthenticated()) {
+            authenticateAndFetchAccessToken();
         }
 
-        // Parse query string to see if page request is coming from OAuth 2.0 server.
-        // var params = {};
-        // var regex = /([^&=]+)=([^&]*)/g, m;
-        // while (m = regex.exec(fragmentString)) {
-        //     params[decodeURIComponent(m[1])] = decodeURIComponent(m[2]);
-        // }
-        // if (Object.keys(params).length > 0) {
-        //     localStorage.setItem(drpAccessTokenKey, JSON.stringify(params));
-        //     if (params['state'] && params['state'] == 'try_sample_request') {
-        //         trySampleRequest();
-        //         // getPhotosList();
-        //     }
-        // }
+        function clearAuthDataAndReAuth() {
+            localStorage.removeItem(drpAuthCodeKey);
+            localStorage.removeItem(drpAccessTokenKey);
+            authenticateAndFetchAccessToken();
+        }
+
+        function authenticateAndFetchAccessToken() {
+            let authCode = getCodeFromUrl();
+            saveCodeInLocalStorage(authCode);
+            console.log('access code is ' + authCode);
+            if (!authCode || authCode === '') {
+                console.log("not authenticated yet")
+                oauth2SignIn();
+            } else {
+                console.log("authenticated but not authorized yet, fetching access token.")
+                fetchAccessTokenFromCode(authCode);
+            }
+        }
 
         // If there's an access token, try an API request.
         // Otherwise, start OAuth 2.0 flow.
@@ -58,14 +56,91 @@
                 xhr.onreadystatechange = function (e) {
                     if (xhr.readyState === 4 && xhr.status === 200) {
                         console.log(xhr.response);
+                        getIndividualFileData(JSON.parse(xhr.responseText));
                     } else if (xhr.readyState === 4 && xhr.status === 401) {
-                        // Token invalid, so prompt for user permission.
-                        oauth2SignIn();
+                        authenticateAndFetchAccessToken();
                     }
                 };
-                xhr.send('{"path":"","recursive":false}');
+                xhr.send('{"path":"/images/others","recursive":false}');
             } else {
-                oauth2SignIn();
+                authenticateAndFetchAccessToken();
+            }
+        }
+
+        // https://api.dropboxapi.com/2/file_requests/list
+        function listFiles() {
+            var params = JSON.parse(localStorage.getItem(drpAccessTokenKey));
+            if (params && params['access_token']) {
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST','https://api.dropboxapi.com/2/file_requests/list');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + params['access_token']);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.onreadystatechange = function (e) {
+                    if (xhr.readyState === 4 && xhr.status === 200) {
+                        console.log(xhr.response);
+                        let fileListData = JSON.parse(xhr.responseText);
+                        if (!fileListData) {
+                            console.log("empty file list data");
+                            return;
+                        }
+                        let fileList = fileListData['file_requests'];
+                        for (let i=0;i<fileList.length;i++) {
+                            let fileId = fileList[i]['id'];
+                            fetchAndAddImageToTable(fileId);
+                            break;
+                        }
+                    } else if (xhr.readyState === 4 && xhr.status === 401) {
+                        authenticateAndFetchAccessToken();
+                    }
+                };
+                xhr.send('null');
+            } else {
+                authenticateAndFetchAccessToken();
+            }
+        }
+
+
+        function getIndividualFileData(fileListData) {
+            let entries = fileListData["entries"];
+            if (!entries) {
+                console.log("get file, entries are empty");
+                return;
+            }
+            for (let i = 0; i < entries.length; i++) {
+                let fileEntry = entries[i];
+                if (!fileEntry) {
+                    continue;
+                }
+                if (fileEntry['.tag'] === 'file') {
+                    let fileId= fileEntry['id'];
+                    // if (fileId.includes('id:')) {
+                    //     fileId = fileId.split('id:')[1];
+                    // }
+                    fetchAndAddImageToTable(fileId);
+                    break;
+                }
+            }
+        }
+
+        function fetchAndAddImageToTable(imageId) {
+            var params = JSON.parse(localStorage.getItem(drpAccessTokenKey));
+            if (params && params['access_token']) {
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', 'https://api.dropboxapi.com/2/files/get_metadata');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + params['access_token']);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.onreadystatechange = function (e) {
+                    if (xhr.readyState === 4 && xhr.status === 200) {
+                        console.log('got file data for fileId ' + imageId);
+                        console.log(xhr.response);
+                    } else if (xhr.readyState === 4 && xhr.status === 401) {
+                        authenticateAndFetchAccessToken();
+                    }
+                };
+                let postData = {'path':imageId};
+                xhr.send(JSON.stringify(postData));
+            } else {
+                authenticateAndFetchAccessToken();
             }
         }
 
@@ -112,41 +187,33 @@
 
             console.log("adding " + mediaItems.length + " rows to table");
             for (let i = 0; i < mediaItems.length; i++) {
-                let row = tableRef.insertRow(-1);
-                row.id = 'row_' + i;
-
-                let imageData = mediaItems[i];
-
-                let serNumCell = row.insertCell();
-                let serialNumNd = document.createTextNode('' + (i + 1));
-                serNumCell.appendChild(serialNumNd);
-
-                // let idCell = row.insertCell();
-                // let imageId = imageData['id'];
-                // let divElem = document.createElement('div');
-                // let idText = document.createTextNode("id - " + imageId);
-                // divElem.appendChild(idText);
-                // idCell.appendChild(divElem);
-
-                let imgNameCell = row.insertCell();
-                let imageName = imageData['filename'];
-                let imgNameNd = document.createTextNode("image: " + imageName);
-                imgNameCell.appendChild(imgNameNd);
-
-                let imgBaseUrl = imageData['baseUrl'];
-                let imgBigUrl = imgBaseUrl + '=w0-h0';
-
-                let imgCell = row.insertCell();
-                let hyperNd = document.createElement('a')
-                hyperNd.setAttribute('target', '_blank');
-                hyperNd.setAttribute('href', imgBigUrl);
-                let imgNd = document.createElement('img');
-                imgNd.setAttribute('src', imgBaseUrl);
-                imgNd.setAttribute('alt', imageName);
-                imgNd.setAttribute('class', 'gpics');
-                hyperNd.appendChild(imgNd);
-                imgCell.appendChild(hyperNd);
+                // addImageToTable(tableRef, )
             }
+        }
+
+        function addImageToTable(tableRef, imgName, imgUrl) {
+            let row = tableRef.insertRow(-1);
+            row.id = 'row_' + i;
+
+            let serNumCell = row.insertCell();
+            let serialNumNd = document.createTextNode('' + (i + 1));
+            serNumCell.appendChild(serialNumNd);
+
+            let imgNameCell = row.insertCell();
+            // let imgName = imageData['filename'];
+            let imgNameNd = document.createTextNode("image: " + imgName);
+            imgNameCell.appendChild(imgNameNd);
+
+            let imgCell = row.insertCell();
+            let hyperNd = document.createElement('a')
+            hyperNd.setAttribute('target', '_blank');
+            hyperNd.setAttribute('href', imgUrl);
+            let imgNd = document.createElement('img');
+            imgNd.setAttribute('src', imgUrl);
+            imgNd.setAttribute('alt', imgName);
+            imgNd.setAttribute('class', 'drbpics');
+            hyperNd.appendChild(imgNd);
+            imgCell.appendChild(hyperNd);
         }
 
         function clearTableRows() {
@@ -172,24 +239,23 @@
             window.open(oauth2Endpoint, '_self');
         }
 
-        function fetchAccessToken(accessCode) {
+        function fetchAccessTokenFromCode(authCode) {
             var xhr = new XMLHttpRequest();
-            xhr.open('POST',
-                'https://api.dropboxapi.com/oauth2/token');
+            xhr.open('POST', 'https://api.dropboxapi.com/oauth2/token');
             xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
             xhr.onreadystatechange = function (e) {
                 if (xhr.readyState === 4 && xhr.status === 200) {
                     console.log('got access token');
                     console.log(xhr.response);
                     localStorage.setItem(drpAccessTokenKey, xhr.responseText);
-                    listDropboxFolders();
                 } else if (xhr.readyState === 4 && xhr.status === 401) {
                     // Token invalid, so prompt for user permission.
                     oauth2SignIn();
                 }
             };
+            // redirect here is only for verification, there won't be redirection done here.
             tokenData = {
-                "code": accessCode,
+                "code": authCode,
                 "grant_type": "authorization_code",
                 "redirect_uri": APP_REDIRECT_URI,
                 "client_id": APP_KEY,
@@ -200,18 +266,26 @@
             xhr.send(new URLSearchParams(tokenData));
         }
 
+
         function getAccessTokenFromUrl() {
             return parseQueryString(window.location.hash).access_token;
         }
 
-        // If the user was just redirected from authenticating, the urls hash will
-        // contain the access token.
+        // if 
         function isAuthenticated() {
-            return !!getAccessTokenFromUrl();
+            var params = JSON.parse(localStorage.getItem(drpAccessTokenKey));
+            return params && params['access_token']
         }
 
         function getCodeFromUrl() {
             return parseQueryString(window.location.search).code;
+        }
+
+        //FIXME this isn't a secure way (i think)
+        function saveCodeInLocalStorage(authCode) {
+            if (authCode && authCode !== '') {
+                localStorage.setItem(drpAuthCodeKey, JSON.stringify({ "auth-code": authCode }));
+            }
         }
 
         function parseQueryString(str) {
@@ -256,8 +330,9 @@
     <h1>Photos to Dropbox</h1>
 
     <div>
-        <button onclick="getPhotosList();">Try sample request</button>
-        <button>Next Data</button>
+        <button onclick="listDropboxFolders()">List Dropbox folders</button>
+        <button onclick="listFiles()">List files</button>
+        <button onclick="clearAuthDataAndReAuth()">ReAuthenticate</button>
     </div>
 
     <div>
