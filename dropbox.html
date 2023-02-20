@@ -126,19 +126,33 @@
             var params = JSON.parse(localStorage.getItem(drpAccessTokenKey));
             if (params && params['access_token']) {
                 var xhr = new XMLHttpRequest();
-                xhr.open('POST', 'https://api.dropboxapi.com/2/files/get_metadata');
+//                 curl -X POST https://content.dropboxapi.com/2/files/get_thumbnail_v2 \
+//   --header 'Authorization: Bearer sl.BZPBt1eSw5cwfuegp_ynl74NZ-C1zpE9k18_ZVapIttperj3X-XT7ez-Wgtc8ZRSsMSb2LdD-N8U-cDUsS2axbuKkpq7bJLjjcMG85u5qLR4rJlNQp_DMaqepVcNLAgmVwoc6t1y' \
+//   --header 'Dropbox-API-Arg: {"resource":{".tag":"path","path":"/images/others/abd.jpg"}}'
+
+                xhr.open('POST', 'https://content.dropboxapi.com/2/files/get_thumbnail_v2');
                 xhr.setRequestHeader('Authorization', 'Bearer ' + params['access_token']);
-                xhr.setRequestHeader('Content-Type', 'application/json');
+                let resourceData = {'resource':{'.tag':'path', 'path':'/images/others/abd.jpg'}};
+                xhr.setRequestHeader('Dropbox-API-Arg', JSON.stringify(resourceData));
+                xhr.responseType = "blob";
                 xhr.onreadystatechange = function (e) {
                     if (xhr.readyState === 4 && xhr.status === 200) {
                         console.log('got file data for fileId ' + imageId);
-                        console.log(xhr.response);
+                        let xhrResponse = xhr.response;
+                        console.log(xhrResponse);
+                        let tempURL = URL.createObjectURL(xhrResponse);
+                        console.log('temp url is ', tempURL);
+
+                        let tmpImgTag = document.createElement('img');
+                        tmpImgTag.src = tempURL;
+
+                        let testThumbnail = document.getElementById('test_thumbnail');
+                        testThumbnail.appendChild(tmpImgTag);
                     } else if (xhr.readyState === 4 && xhr.status === 401) {
                         authenticateAndFetchAccessToken();
                     }
                 };
-                let postData = {'path':imageId};
-                xhr.send(JSON.stringify(postData));
+                xhr.send();
             } else {
                 authenticateAndFetchAccessToken();
             }
@@ -345,6 +359,9 @@
             </tr>
         </table>
     </div>
+
+    <div id="test_thumbnail"></div>
+
 </body>
 
 </html>
