@@ -158,7 +158,7 @@
                         let tempImgURL = URL.createObjectURL(xhrResponse);
                         console.log('temp url is ', tempImgURL);
                         let tableRef = document.getElementById('drp_pics-table');
-                        addImageToTable(tableRef, imageData['name'], tempImgURL);
+                        addImageToTable(tableRef, imageData['name'], tempImgURL, imageData['path_lower']);
                     } else if (xhr.readyState === 4 && xhr.status === 401) {
                         authenticateAndFetchAccessToken();
                     }
@@ -166,33 +166,6 @@
                 xhr.send();
             } else {
                 authenticateAndFetchAccessToken();
-            }
-        }
-
-        function getPhotosList() {
-            let nextPageToken = picNextPageToken;
-            var params = JSON.parse(localStorage.getItem(drpAccessTokenKey));
-            if (params && params['access_token']) {
-                var xhr = new XMLHttpRequest();
-                xhr.open('GET',
-                    'https://photoslibrary.googleapis.com/v1/mediaItems?pageSize=10&pageToken=' + nextPageToken);
-                xhr.setRequestHeader('Authorization', 'Bearer ' + params['access_token']);
-                xhr.onreadystatechange = function (e) {
-                    if (xhr.readyState === 4 && xhr.status === 200) {
-                        console.log("got pics list");
-                        console.log(xhr.response);
-                        // updateTableWithImages(JSON.parse(xhr.responseText));
-                    } else if (xhr.readyState === 4 && xhr.status === 401) {
-                        oauth2SignIn();
-                    } else if (xhr.readyState === 4) {
-                        console.log("some issue, xhr.status: " + xhr.status);
-                    } else {
-                        console.log("some different issue, xhr.readyState: " + xhr.readyState + " status: " + xhr.status);
-                    }
-                };
-                xhr.send(null);
-            } else {
-                oauth2SignIn();
             }
         }
 
@@ -216,7 +189,7 @@
             }
         }
 
-        function addImageToTable(tableRef, imgName, imgUrl) {
+        function addImageToTable(tableRef, imgName, imgUrl, imgPath) {
             let row = tableRef.insertRow(-1);
             let i = tableRef.rows.length - 1
             row.id = 'row_' + i;
@@ -234,12 +207,54 @@
             let hyperNd = document.createElement('a')
             hyperNd.setAttribute('target', '_blank');
             hyperNd.setAttribute('href', imgUrl);
+            hyperNd.setAttribute('download', imgName);
             let imgNd = document.createElement('img');
             imgNd.setAttribute('src', imgUrl);
             imgNd.setAttribute('alt', imgName);
             imgNd.setAttribute('class', 'drbpics');
             hyperNd.appendChild(imgNd);
             imgCell.appendChild(hyperNd);
+            getFullImage(row, 3, imgName, imgPath);
+        }
+
+        // put full image in cellIdx column
+        async function getFullImage(rowelement, cellIdx, imgName, imgPath) {
+            var params = JSON.parse(localStorage.getItem(drpAccessTokenKey));
+            if (params && params['access_token']) {
+                console.debug("getFullImage of ", imgPath);
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', 'https://content.dropboxapi.com/2/files/download');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + params['access_token']);
+                let resourceData = {'path': imgPath};
+                xhr.setRequestHeader('Dropbox-API-Arg', JSON.stringify(resourceData));
+                xhr.responseType = "blob";
+                xhr.onreadystatechange = function (e) {
+                    if (xhr.readyState === 4 && xhr.status === 200) {
+                        console.log('got response getFullImage ' + imgPath);
+                        let xhrResponse = xhr.response;
+                        console.log(xhrResponse);
+                        let tempImgURL = URL.createObjectURL(xhrResponse);
+                        console.log('getFullImage temp url is ', tempImgURL);
+                        // add image to row
+                        let imgCell = rowelement.insertCell(cellIdx);
+                        let hyperNd = document.createElement('a')
+                        hyperNd.setAttribute('target', '_blank');
+                        hyperNd.setAttribute('href', tempImgURL);
+                        hyperNd.setAttribute('download', imgName);
+                        let imgNd = document.createElement('img');
+                        imgNd.setAttribute('src', tempImgURL);
+                        imgNd.setAttribute('alt', imgName);
+                        imgNd.setAttribute('class', 'drbpics');
+                        hyperNd.appendChild(imgNd);
+                        imgCell.appendChild(hyperNd);
+                    } else if (xhr.readyState === 4 && xhr.status === 401) {
+                        authenticateAndFetchAccessToken();
+                    }
+                };
+                xhr.send();
+            } else {
+                authenticateAndFetchAccessToken();
+            }
         }
 
         function clearTableRows() {
@@ -368,6 +383,7 @@
                 <th>Image Id</th>
                 <th>Image Name</th>
                 <th>Image</th>
+                <th>Full Image</th>
             </tr>
         </table>
     </div>

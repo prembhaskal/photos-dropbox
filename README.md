@@ -28,5 +28,6 @@ NOTE: The port 19080 exists in code because of my current testing environment in
   - 'Next Data' button does nothing yet.
 #### dropbox pics
   - open http://localhost:19080/dropbox.html
-  - click on the button 'List Dropbox Folders' 3 times to see the thumbnail of ABD.
+  - click on the button 'List Dropbox Folders' 3 times to see the thumbnail and picture of ABD.
+  - click on either picture to trigger a download.
   - all interesting things are available in console here, it still under development.
