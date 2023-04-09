@@ -48,6 +48,7 @@
         function listDropboxFolders() {
             var params = JSON.parse(localStorage.getItem(drpAccessTokenKey));
             if (params && params['access_token']) {
+                console.debug("token present, listing folderr", params['access_token']);
                 var xhr = new XMLHttpRequest();
                 xhr.open('POST',
                     'https://api.dropboxapi.com/2/files/list_folder');
@@ -55,14 +56,17 @@
                 xhr.setRequestHeader('Content-Type', 'application/json');
                 xhr.onreadystatechange = function (e) {
                     if (xhr.readyState === 4 && xhr.status === 200) {
+                        console.info("got list_folder output...");
                         console.log(xhr.response);
                         getIndividualFileData(JSON.parse(xhr.responseText));
                     } else if (xhr.readyState === 4 && xhr.status === 401) {
+                        console.error("error listing folder, probably bad token, going back in auth flow");
                         authenticateAndFetchAccessToken();
                     }
                 };
                 xhr.send('{"path":"/images/others","recursive":false}');
             } else {
+                console.info("no token, going in auth flow");
                 authenticateAndFetchAccessToken();
             }
         }
@@ -106,6 +110,10 @@
                 console.log("get file, entries are empty");
                 return;
             }
+
+            clearTableRows();
+
+            let maxdisplay = 5;
             for (let i = 0; i < entries.length; i++) {
                 let fileEntry = entries[i];
                 if (!fileEntry) {
@@ -116,15 +124,21 @@
                     // if (fileId.includes('id:')) {
                     //     fileId = fileId.split('id:')[1];
                     // }
-                    fetchAndAddImageToTable(fileId);
+                    fetchAndAddImageToTable(fileEntry);
+                    // break;
+                }
+                maxdisplay--;
+                if (maxdisplay === 0) {
+                    console.debug("stopping as limit reached for display");
                     break;
                 }
             }
         }
 
-        function fetchAndAddImageToTable(imageId) {
+        function fetchAndAddImageToTable(imageData) {
             var params = JSON.parse(localStorage.getItem(drpAccessTokenKey));
             if (params && params['access_token']) {
+                console.debug("fetchAndAddImageToTable for ", imageData['name'] + " at " + imageData['path_lower']);
                 var xhr = new XMLHttpRequest();
 //                 curl -X POST https://content.dropboxapi.com/2/files/get_thumbnail_v2 \
 //   --header 'Authorization: Bearer sl.BZPBt1eSw5cwfuegp_ynl74NZ-C1zpE9k18_ZVapIttperj3X-XT7ez-Wgtc8ZRSsMSb2LdD-N8U-cDUsS2axbuKkpq7bJLjjcMG85u5qLR4rJlNQp_DMaqepVcNLAgmVwoc6t1y' \
@@ -132,22 +146,19 @@
 
                 xhr.open('POST', 'https://content.dropboxapi.com/2/files/get_thumbnail_v2');
                 xhr.setRequestHeader('Authorization', 'Bearer ' + params['access_token']);
-                let resourceData = {'resource':{'.tag':'path', 'path':'/images/others/abd.jpg'}};
+                // let resourceData = {'resource':{'.tag':'path', 'path':'/images/others/abd.jpg'}};
+                let resourceData = {'resource':{'.tag':'path', 'path':imageData['path_lower']}};
                 xhr.setRequestHeader('Dropbox-API-Arg', JSON.stringify(resourceData));
                 xhr.responseType = "blob";
                 xhr.onreadystatechange = function (e) {
                     if (xhr.readyState === 4 && xhr.status === 200) {
-                        console.log('got file data for fileId ' + imageId);
+                        console.log('got file data for fileId ' + imageData['id'] + " name: " + imageData['name']);
                         let xhrResponse = xhr.response;
                         console.log(xhrResponse);
-                        let tempURL = URL.createObjectURL(xhrResponse);
-                        console.log('temp url is ', tempURL);
-
-                        let tmpImgTag = document.createElement('img');
-                        tmpImgTag.src = tempURL;
-
-                        let testThumbnail = document.getElementById('test_thumbnail');
-                        testThumbnail.appendChild(tmpImgTag);
+                        let tempImgURL = URL.createObjectURL(xhrResponse);
+                        console.log('temp url is ', tempImgURL);
+                        let tableRef = document.getElementById('drp_pics-table');
+                        addImageToTable(tableRef, imageData['name'], tempImgURL);
                     } else if (xhr.readyState === 4 && xhr.status === 401) {
                         authenticateAndFetchAccessToken();
                     }
@@ -197,7 +208,7 @@
             }
             console.log("found next page token is " + picNextPageToken);
             clearTableRows();
-            let tableRef = document.getElementById('pics-table');
+            let tableRef = document.getElementById('drp_pics-table');
 
             console.log("adding " + mediaItems.length + " rows to table");
             for (let i = 0; i < mediaItems.length; i++) {
@@ -207,6 +218,7 @@
 
         function addImageToTable(tableRef, imgName, imgUrl) {
             let row = tableRef.insertRow(-1);
+            let i = tableRef.rows.length - 1
             row.id = 'row_' + i;
 
             let serNumCell = row.insertCell();
@@ -231,7 +243,7 @@
         }
 
         function clearTableRows() {
-            let tableRef = document.getElementById('pics-table');
+            let tableRef = document.getElementById('drp_pics-table');
             let n = tableRef.rows.length;
             console.log("table rows length " + n);
             for (let i = n - 1; i >= 0; i--) { // don't remove header row.
