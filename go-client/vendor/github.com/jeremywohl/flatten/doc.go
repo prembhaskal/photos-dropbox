@@ -50,5 +50,4 @@
 //	flat, err := flatten.FlattenString(nested, "", emdash)
 //
 //	// output: `{ "one--two--0": "2a", "one--two--1": "2b", "side": "value" }`
-//
 package flatten

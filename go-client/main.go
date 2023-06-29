@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"io"
 
 	"github.com/jeremywohl/flatten"
 	"github.com/kelseyhightower/envconfig"
@@ -37,6 +38,42 @@ func main() {
 	}
 
 	log.Printf("processing with token: %s", token)
+	err = listPhotos("", token)
+	if err != nil {
+		log.Printf("Error in list pics: %v", err)
+	}
+}
+
+func listPhotos(nextpagetoken, accesstoken string) error {
+	listPicsURL := "https://photoslibrary.googleapis.com/v1/mediaItems?pageSize=10&pageToken=" + nextpagetoken
+	req, err := http.NewRequest("GET", listPicsURL, nil)
+	if err != nil {
+		return err
+	}
+
+	header := http.Header{}
+	header.Add("Authorization", fmt.Sprintf("Bearer %s", accesstoken))
+
+	req.Header = header
+
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("list photos output: %+v", resp)
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("list pics resp body: %s", string(data))
+
+	return nil
 }
 
 func getClientSecret() (string, string, error) {

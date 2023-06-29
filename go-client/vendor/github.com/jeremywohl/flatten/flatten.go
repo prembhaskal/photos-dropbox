@@ -9,9 +9,13 @@ import (
 
 // The style of keys.  If there is an input with two
 // nested keys "f" and "g", with "f" at the root,
-//    { "f": { "g": ... } }
+//
+//	{ "f": { "g": ... } }
+//
 // the output will be the concatenation
-//    f{Middle}{Before}g{After}...
+//
+//	f{Middle}{Before}g{After}...
+//
 // Any struct element may be blank.
 // If you use Middle, you will probably leave Before & After blank, and vice-versa.
 // See examples in flatten_test.go and the "Default styles" here.
